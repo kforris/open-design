@@ -65,6 +65,7 @@ import {
   effectivePreviewScale,
   fileVersionPreviewOptions,
   parseInspectOverridesFromSource,
+  previewZoomShortcutForEvent,
   previewOverlayTransform,
   serializeInspectOverrides,
   updateInspectOverride,
@@ -84,6 +85,7 @@ import { __resetPreviewIsolationCache } from '../../src/runtime/powered-preview'
 import { readExpandedIndexCss } from '../helpers/read-expanded-css';
 
 const TEST_SNAPSHOT_DATA_URL = 'data:image/png;base64,c25hcHNob3Q=';
+const originalNavigatorPlatformDescriptor = Object.getOwnPropertyDescriptor(navigator, 'platform');
 
 afterEach(() => {
   cleanup();
@@ -91,6 +93,11 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   analyticsTrackMock.mockReset();
+  if (originalNavigatorPlatformDescriptor) {
+    Object.defineProperty(navigator, 'platform', originalNavigatorPlatformDescriptor);
+  } else {
+    Reflect.deleteProperty(navigator, 'platform');
+  }
   Reflect.deleteProperty(navigator, 'clipboard');
   Reflect.deleteProperty(document, 'execCommand');
 });
@@ -400,6 +407,18 @@ describe('FileViewer preview scale', () => {
     expect(deckKeyboardShortcutForEvent({ ...base, key: 'r', altKey: true })).toBeNull();
     expect(deckKeyboardShortcutForEvent({ ...base, key: 'r', shiftKey: true })).toBeNull();
     expect(deckKeyboardShortcutForEvent({ ...base, key: 'ArrowRight', metaKey: true })).toBeNull();
+  });
+
+  it('maps preview zoom shortcuts to the platform primary modifier', () => {
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'Win32' });
+    const base = { ctrlKey: false, altKey: false, metaKey: false };
+
+    expect(previewZoomShortcutForEvent({ ...base, key: '=', ctrlKey: true })).toBe('in');
+    expect(previewZoomShortcutForEvent({ ...base, key: '+', ctrlKey: true })).toBe('in');
+    expect(previewZoomShortcutForEvent({ ...base, key: '-', ctrlKey: true })).toBe('out');
+    expect(previewZoomShortcutForEvent({ ...base, key: '0', ctrlKey: true })).toBe('reset');
+    expect(previewZoomShortcutForEvent({ ...base, key: '=', metaKey: true })).toBeNull();
+    expect(previewZoomShortcutForEvent({ ...base, key: '=', ctrlKey: true, altKey: true })).toBeNull();
   });
 
   it('clamps mobile and tablet overlay scale to the iframe auto-fit scale', () => {
@@ -5324,6 +5343,7 @@ describe('FileViewer tweaks toolbar', () => {
   });
 
   it('auto-fits wide desktop HTML previews until the user manually zooms', async () => {
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'Win32' });
     let viewerBodyWidth = 900;
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
       .mockImplementation(function getBoundingClientRectMock(this: HTMLElement) {
@@ -5366,6 +5386,16 @@ describe('FileViewer tweaks toolbar', () => {
 
     viewerBodyWidth = 720;
     window.dispatchEvent(new Event('resize'));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '50%' })).toBeTruthy();
+    });
+
+    fireEvent.keyDown(window, { key: '=', ctrlKey: true });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '75%' })).toBeTruthy();
+    });
+
+    fireEvent.keyDown(window, { key: '0', ctrlKey: true });
     await waitFor(() => {
       expect(screen.getByRole('button', { name: '50%' })).toBeTruthy();
     });

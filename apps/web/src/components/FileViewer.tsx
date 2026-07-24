@@ -49,6 +49,7 @@ import {
 } from './markdown-scroll-sync';
 import { useT, useI18n } from '../i18n';
 import type { Dict, Locale } from '../i18n/types';
+import { isMacPlatform } from '../utils/platform';
 import {
   fetchLiveArtifact,
   fetchLiveArtifactCode,
@@ -988,6 +989,34 @@ function zoomPercentLabel(zoomPercent: number): string {
   return `${Math.round(zoomPercent)}%`;
 }
 
+const PREVIEW_ZOOM_LEVELS = [50, 75, 100, 125, 150, 200] as const;
+const MIN_PREVIEW_ZOOM_LEVEL = 50;
+const MAX_PREVIEW_ZOOM_LEVEL = 200;
+
+type PreviewZoomShortcut = 'in' | 'out' | 'reset';
+
+type PreviewZoomShortcutEvent = Pick<
+  KeyboardEvent,
+  'key' | 'metaKey' | 'ctrlKey' | 'altKey'
+>;
+
+export function previewZoomShortcutForEvent(event: PreviewZoomShortcutEvent): PreviewZoomShortcut | null {
+  if (event.altKey) return null;
+  const primary = isMacPlatform() ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+  if (!primary) return null;
+  if (event.key === '+' || event.key === '=') return 'in';
+  if (event.key === '-' || event.key === '_') return 'out';
+  if (event.key === '0') return 'reset';
+  return null;
+}
+
+function nextPreviewZoomLevel(current: number, direction: 'in' | 'out'): number {
+  if (direction === 'in') {
+    return PREVIEW_ZOOM_LEVELS.find((level) => level > current) ?? MAX_PREVIEW_ZOOM_LEVEL;
+  }
+  return [...PREVIEW_ZOOM_LEVELS].reverse().find((level) => level < current) ?? MIN_PREVIEW_ZOOM_LEVEL;
+}
+
 type PreviewOverlayTransform = { scale: number; offsetX: number; offsetY: number };
 
 export function previewOverlayTransform(
@@ -1717,6 +1746,24 @@ export function LiveArtifactViewer({
     };
   }, [zoomMenuOpen]);
 
+  useEffect(() => {
+    if (mode !== 'preview') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing || isEditableKeyboardTarget(e.target)) return;
+      const shortcut = previewZoomShortcutForEvent(e);
+      if (!shortcut) return;
+      e.preventDefault();
+      setZoomMenuOpen(false);
+      if (shortcut === 'reset') {
+        setZoom(100);
+        return;
+      }
+      setZoom((current) => nextPreviewZoomLevel(current, shortcut));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mode]);
+
   return (
     <div className={`viewer html-viewer live-artifact-viewer${inTabPresent ? ' is-tab-present' : ''}`}>
       {((node: ReactNode) => (
@@ -1820,7 +1867,7 @@ export function LiveArtifactViewer({
               </button>
               {zoomMenuOpen && mode === 'preview' ? (
                 <div className="zoom-menu-popover" role="menu">
-                  {[50, 75, 100, 125, 150, 200].map((level) => (
+                  {PREVIEW_ZOOM_LEVELS.map((level) => (
                     <button
                       key={level}
                       type="button"
@@ -9407,6 +9454,26 @@ function HtmlViewer({
   }, [zoomMenuOpen]);
 
   useEffect(() => {
+    if (mode !== 'preview' || source === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing || isEditableKeyboardTarget(e.target)) return;
+      const shortcut = previewZoomShortcutForEvent(e);
+      if (!shortcut) return;
+      e.preventDefault();
+      setZoomMenuOpen(false);
+      if (shortcut === 'reset') {
+        setZoomMode('auto');
+        setZoom(100);
+        return;
+      }
+      setZoomMode('manual');
+      setZoom(nextPreviewZoomLevel(previewZoomPercent, shortcut));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mode, previewZoomPercent, source]);
+
+  useEffect(() => {
     if (!toolbarMoreOpen) return;
     const onDocClick = (e: MouseEvent) => {
       if (!toolbarMoreRef.current) return;
@@ -11613,7 +11680,7 @@ function HtmlViewer({
                   </button>
                   {zoomMenuOpen ? (
                     <div className="zoom-menu-popover" role="menu">
-                      {[50, 75, 100, 125, 150, 200].map((level) => (
+                      {PREVIEW_ZOOM_LEVELS.map((level) => (
                         <button
                           key={level}
                           type="button"
@@ -11789,7 +11856,7 @@ function HtmlViewer({
                     {source !== null && mode === 'preview' ? (
                       <>
                         <div className="viewer-toolbar-more-separator" role="separator" />
-                        {[50, 75, 100, 125, 150, 200].map((level) => (
+                        {PREVIEW_ZOOM_LEVELS.map((level) => (
                           <button
                             key={level}
                             type="button"

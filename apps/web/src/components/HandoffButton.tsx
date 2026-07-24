@@ -492,6 +492,8 @@ export function HandoffButton({
         setCopiedCliId(null);
         copiedTimerRef.current = null;
       }, 1800);
+    } catch {
+      setError(t('handoff.copyFailed'));
     } finally {
       setCopyBusy(null);
     }
@@ -519,6 +521,8 @@ export function HandoffButton({
         setCopiedCliId(null);
         copiedTimerRef.current = null;
       }, 1800);
+    } catch {
+      setError(t('handoff.copyFailed'));
     } finally {
       setCopyBusy(null);
     }

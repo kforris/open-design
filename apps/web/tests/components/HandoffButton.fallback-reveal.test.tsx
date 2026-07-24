@@ -152,6 +152,46 @@ describe('HandoffButton zero-editors fallback', () => {
     expect(prompt).toContain('真实可运行');
   });
 
+  it('surfaces rejected CLI prompt clipboard writes inline', async () => {
+    fetchHostEditors.mockResolvedValue({
+      platform: 'darwin',
+      editors: [
+        {
+          id: 'cursor',
+          label: 'Cursor',
+          available: true,
+        },
+      ],
+    });
+    copyToClipboard.mockRejectedValue(new Error('clipboard permission denied'));
+    const agents: AgentInfo[] = [
+      {
+        id: 'codex',
+        name: 'Codex CLI',
+        bin: 'codex',
+        available: true,
+      },
+    ];
+
+    render(
+      <I18nProvider initial="en">
+        <HandoffButton
+          projectId="p1"
+          projectName="Landing"
+          projectDir="/tmp/open-design/Landing"
+          agents={agents}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(await screen.findByTestId('handoff-caret'));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Copy for CLI' }));
+    fireEvent.click(await screen.findByTestId('handoff-cli-item-codex'));
+
+    expect(await screen.findByText('Clipboard write was blocked. Try again in a moment.')).toBeTruthy();
+    expect(screen.getByTestId('handoff-menu')).toBeTruthy();
+  });
+
   it('keeps the project path hidden behind a compact copy row', async () => {
     fetchHostEditors.mockResolvedValue({
       platform: 'darwin',
